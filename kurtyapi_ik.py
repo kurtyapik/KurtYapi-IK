@@ -4,11 +4,10 @@ from datetime import datetime, date
 import smtplib
 from email.mime.text import MIMEText
 
-# --- E-POSTA AYARLARI (BURAYI KENDİNİZE GÖRE DOLDURACAKSINIZ) ---
-# Gönderici hesabın Gmail olması gerekir.
+# --- E-POSTA AYARLARI ---
 GONDERICI_MAIL = "meltempolat@kurtyapihafriyat.com.tr" 
 UYGULAMA_SIFRESI = "yrizbqyixotlrwkl"
-ALICI_MAIL = "ik@kurtyapihafriyat.com.tr" # Sizin kendi mailiniz
+ALICI_MAIL = "ik@kurtyapihafriyat.com.tr" 
 
 def mail_gonder(ad, izin_turu, baslangic, bitis):
     mesaj = f"Kurt Yapı Merkez'den Yeni İzin Talebi Var!\n\nPersonel: {ad}\nİzin Türü: {izin_turu}\nTarihler: {baslangic} - {bitis}\n\nLütfen sisteme girerek onaylayınız."

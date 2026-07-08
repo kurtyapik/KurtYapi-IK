@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 from datetime import datetime
@@ -6,7 +5,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 import json
 
-# --- BAĞLANTI ---
+# --- BAĞLANTI AYARLARI ---
 @st.cache_resource
 def get_google_sheet():
     creds_dict = json.loads(st.secrets["GOOGLE_CREDENTIALS"], strict=False)
@@ -16,24 +15,29 @@ def get_google_sheet():
 # --- SİSTEM KURULUMU ---
 try:
     sh = get_google_sheet()
-    ws_personel = sh.get_worksheet(0) # 1. Sekme
-    ws_talepler = sh.get_worksheet(1) # 2. Sekme
+    # 1. Sekme: Personel Listesi
+    ws_personel = sh.get_worksheet(0)
+    # 2. Sekme: İzin Talepleri
+    ws_talepler = sh.get_worksheet(1)
+    
+    # Personel verilerini yükle (Görseldeki başlıklara göre)
     df_personel = pd.DataFrame(ws_personel.get_all_records())
 except Exception as e:
-    st.error("Veri tabanı bağlantı hatası! Sekmelerinizin sırasını kontrol edin.")
+    st.error(f"Bağlantı hatası: {e}")
     st.stop()
 
 st.title("🏗️ KURT YAPI İK YÖNETİMİ")
 
 # --- PERSONEL SORGULAMA ---
-tc_no = st.text_input("TC Kimlik Numaranızı Giriniz:")
+tc_no = st.text_input("TC Kimlik No ile Giriş Yapınız:")
 
 if tc_no:
-    kayit = df_personel[df_personel['TC_Kimlik'].astype(str) == tc_no.strip()]
+    # Görseldeki 'TC Kimlik No' sütununu kullanıyoruz
+    kayit = df_personel[df_personel['TC Kimlik No'].astype(str) == tc_no.strip()]
     
     if not kayit.empty:
         personel = kayit.iloc[0]
-        st.success(f"Hoş geldiniz, {personel['Ad_Soyad']}!")
+        st.success(f"Hoş geldiniz, {personel['Adı Soyadı']}!")
         
         with st.form("izin_formu"):
             izin_turu = st.selectbox("İzin Türü", ["Yıllık İzin", "Mazeret İzni", "Hastalık/Rapor"])
@@ -42,14 +46,24 @@ if tc_no:
             
             if st.form_submit_button("Talebi Gönder"):
                 gun = (bitis - baslangic).days + 1
-                ws_talepler.append_row([datetime.now().strftime("%d-%m-%Y"), personel['Ad_Soyad'], izin_turu, str(baslangic), str(bitis), gun, "⏳ Bekliyor"])
-                st.success("Talebiniz başarıyla kaydedildi.")
+                # Talepler sayfasına yaz
+                ws_talepler.append_row([
+                    datetime.now().strftime("%d-%m-%Y"), 
+                    personel['Adı Soyadı'], 
+                    izin_turu, 
+                    str(baslangic), 
+                    str(bitis), 
+                    gun, 
+                    "⏳ Bekliyor"
+                ])
+                st.success("Talebiniz başarıyla yöneticiye iletildi.")
     else:
-        st.error("Bu TC ile kayıtlı personel bulunamadı. Lütfen yönetici ile görüşün.")
+        st.error("Bu TC ile kayıtlı personel bulunamadı.")
 
 # --- YÖNETİCİ PANELİ ---
 st.divider()
-if st.text_input("Yönetici Girişi (PIN):", type="password") == "1923":
+admin_pin = st.text_input("Yönetici PIN:", type="password")
+if admin_pin == "1923":
     st.subheader("⚙️ Onay Bekleyen Talepler")
     try:
         talep_data = ws_talepler.get_all_records()
@@ -58,4 +72,4 @@ if st.text_input("Yönetici Girişi (PIN):", type="password") == "1923":
         else:
             st.info("Henüz bekleyen talep yok.")
     except:
-        st.write("Talepler sekmesi henüz boş.")
+        st.write("Talepler sayfası boş.")

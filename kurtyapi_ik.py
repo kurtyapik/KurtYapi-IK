@@ -35,8 +35,11 @@ st.set_page_config(page_title="Kurt Yapı İK", page_icon="🏗️", layout="cen
 @st.cache_resource
 def get_google_sheet():
     scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-    # Secrets bölümüne yapıştırdığınız JSON kodunu okur
-    creds_dict = json.loads(st.secrets["GOOGLE_CREDENTIALS"])
+    creds_str = st.secrets["GOOGLE_CREDENTIALS"]
+    
+    # HATA ÇÖZÜMÜ BURADA: strict=False komutu ile Not Defteri'nin bozduğu karakterleri yoksayıyoruz!
+    creds_dict = json.loads(creds_str, strict=False)
+    
     creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
     client = gspread.authorize(creds)
     return client.open("KurtYapi_IK_Merkez")

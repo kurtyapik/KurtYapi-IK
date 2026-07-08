@@ -9,7 +9,7 @@ import json
 
 # --- E-POSTA AYARLARI ---
 GONDERICI_MAIL = "meltempolat@kurtyapihafriyat.com.tr" 
-UYGULAMA_SIFRESI = "iqiubhtmgdcfjnut"
+UYGULAMA_SIFRESI = "yrizbqyixotlrwkl"
 ALICI_MAIL = "ik@kurtyapihafriyat.com.tr" 
 
 def mail_gonder(ad, izin_turu, baslangic, bitis):
@@ -36,10 +36,7 @@ st.set_page_config(page_title="Kurt Yapı İK", page_icon="🏗️", layout="cen
 def get_google_sheet():
     scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
     creds_str = st.secrets["GOOGLE_CREDENTIALS"]
-    
-    # HATA ÇÖZÜMÜ BURADA: strict=False komutu ile Not Defteri'nin bozduğu karakterleri yoksayıyoruz!
     creds_dict = json.loads(creds_str, strict=False)
-    
     creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
     client = gspread.authorize(creds)
     return client.open("KurtYapi_IK_Merkez")
@@ -59,12 +56,18 @@ except Exception as e:
     st.error(f"Veri tabanına bağlanılamadı. Hata: {e}")
     st.stop()
 
-# Excel'den Verileri Çek
-veri_talepler = ws_talepler.get_all_records()
-veri_bakiyeler = ws_bakiyeler.get_all_records()
+# --- HATA ÇÖZEN GÜÇLÜ OKUMA YÖNTEMİ ---
+veri_talepler = ws_talepler.get_all_values()
+if len(veri_talepler) > 1:
+    df_talepler = pd.DataFrame(veri_talepler[1:], columns=veri_talepler[0])
+else:
+    df_talepler = pd.DataFrame(columns=["ID", "Tarih", "Personel Adı", "İzin Türü", "Başlangıç", "Bitiş", "Gün", "Durum"])
 
-df_talepler = pd.DataFrame(veri_talepler)
-df_bakiyeler = pd.DataFrame(veri_bakiyeler)
+veri_bakiyeler = ws_bakiyeler.get_all_values()
+if len(veri_bakiyeler) > 1:
+    df_bakiyeler = pd.DataFrame(veri_bakiyeler[1:], columns=veri_bakiyeler[0])
+else:
+    df_bakiyeler = pd.DataFrame(columns=["Personel Adı", "Toplam İzin Hakkı", "Kullanılan", "Kalan Bakiye"])
 
 st.title("🏗️ KURT YAPI MERKEZ")
 st.subheader("Personel İzin Yönetim Sistemi")
@@ -88,14 +91,11 @@ with tab1:
                 if gun_sayisi <= 0:
                     st.error("Bitiş tarihi başlangıçtan önce olamaz!")
                 else:
-                    # Talebi benzersiz bir ID ile kaydet
                     islem_id = datetime.now().strftime("%Y%m%d%H%M%S")
                     tarih_str = datetime.now().strftime("%d-%m-%Y")
                     
-                    # Excel 'Talepler' sayfasına yaz
                     ws_talepler.append_row([islem_id, tarih_str, ad, izin_turu, str(baslangic), str(bitis), gun_sayisi, "⏳ Bekliyor"])
                     
-                    # Yöneticiye mail at
                     mail_durumu = mail_gonder(ad, izin_turu, baslangic, bitis)
                     if mail_durumu:
                         st.success("Talebiniz başarıyla alındı ve yöneticiye E-Posta gönderildi.")
@@ -118,21 +118,20 @@ with tab2:
             if not bekleyenler.empty:
                 st.divider()
                 onaylanacak_id = st.selectbox("İşlem yapılacak talebi (ID) seçin:", bekleyenler['ID'].tolist())
-                secilen_talep = bekleyenler[bekleyenler['ID'] == onaylanacak_id].iloc[0]
+                
+                # Ufak bir güvenlik kalkanı (Metin uyuşmazlığını önlemek için)
+                secilen_talep = bekleyenler[bekleyenler['ID'].astype(str) == str(onaylanacak_id)].iloc[0]
                 st.write(f"**İşlem Yapılan Personel:** {secilen_talep['Personel Adı']} | **Talep Edilen Gün:** {secilen_talep['Gün']}")
                 
                 col1, col2 = st.columns(2)
                 with col1:
                     if st.button("✅ Onayla"):
-                        # Talepler sayfasında durumu güncelle
                         hucre = ws_talepler.find(str(onaylanacak_id))
-                        ws_talepler.update_cell(hucre.row, 8, "✅ Onaylandı") # 8. Sütun "Durum" sütunudur.
+                        ws_talepler.update_cell(hucre.row, 8, "✅ Onaylandı")
                         
-                        # Bakiye düşümü yap
                         personel = secilen_talep['Personel Adı']
                         gun = int(secilen_talep['Gün'])
                         try:
-                            # Excel'de personeli bul ve bakiyesini güncelle
                             b_hucre = ws_bakiyeler.find(personel)
                             kullanilan = int(ws_bakiyeler.cell(b_hucre.row, 3).value or 0)
                             yeni_kullanilan = kullanilan + gun
@@ -141,7 +140,6 @@ with tab2:
                             ws_bakiyeler.update_cell(b_hucre.row, 3, yeni_kullanilan)
                             ws_bakiyeler.update_cell(b_hucre.row, 4, toplam - yeni_kullanilan)
                         except:
-                            # Eğer personel listeye ilk defa giriyorsa, varsayılan 14 gün hak ile ekler
                             ws_bakiyeler.append_row([personel, 14, gun, 14-gun])
                             
                         st.success("Talep Onaylandı ve Bakiye Düşüldü! Sayfa yenileniyor...")

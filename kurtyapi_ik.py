@@ -12,26 +12,19 @@ GONDERICI_MAIL = "meltempolat@kurtyapihafriyat.com.tr"
 UYGULAMA_SIFRESI = "pdbkbykldtjnmhqu"
 ALICI_MAIL = "ik@kurtyapihafriyat.com.tr" 
 
-def mail_gonder(ad, izin_turu, baslangic, bitis):
-    mesaj = f"Kurt Yapı Merkez'den Yeni İzin Talebi Var!\n\nPersonel: {ad}\nİzin Türü: {izin_turu}\nTarihler: {baslangic} - {bitis}"
-    msg = MIMEText(mesaj, 'plain', 'utf-8')
-    msg['Subject'] = f'YENİ İZİN TALEBİ: {ad}'
-    msg['From'] = GONDERICI_MAIL
-    msg['To'] = ALICI_MAIL
-    
-    try:
-        # SMTP_SSL yerine SMTP ile 587 portunu kullanıyoruz (Kurumsal standart)
-        server = smtplib.SMTP('smtp.gmail.com', 587)
-        server.starttls()
-        server.login(GONDERICI_MAIL, UYGULAMA_SIFRESI)
-        server.send_message(msg)
-        server.quit()
-        return True
-    except Exception as e:
-        # Hata detayını görmenizi sağlar
-        st.error(f"E-posta hatası: {e}")
-        return False
-    
+if gonder:
+            if ad:
+                gun_sayisi = (bitis - baslangic).days + 1
+                if gun_sayisi <= 0:
+                    st.error("Bitiş tarihi başlangıçtan önce olamaz!")
+                else:
+                    islem_id = datetime.now().strftime("%Y%m%d%H%M%S")
+                    tarih_str = datetime.now().strftime("%d-%m-%Y")
+                    
+                    ws_talepler.append_row([islem_id, tarih_str, ad, izin_turu, str(baslangic), str(bitis), gun_sayisi, "⏳ Bekliyor"])
+                    st.success("Talebiniz başarıyla alındı. Yönetici onayını bekliyor.")
+            else:
+                st.error("Lütfen Ad Soyad giriniz.")
     try:
         server = smtplib.SMTP_SSL('smtp.gmail.com', 465)
         server.login(GONDERICI_MAIL, UYGULAMA_SIFRESI)

@@ -14,10 +14,23 @@ ALICI_MAIL = "ik@kurtyapihafriyat.com.tr"
 
 def mail_gonder(ad, izin_turu, baslangic, bitis):
     mesaj = f"Kurt Yapı Merkez'den Yeni İzin Talebi Var!\n\nPersonel: {ad}\nİzin Türü: {izin_turu}\nTarihler: {baslangic} - {bitis}\n\nLütfen sisteme girerek onaylayınız."
-    msg = MIMEText(mesaj)
+    
+    # Türkçe karakter sorununu önlemek için formatı düzenliyoruz
+    msg = MIMEText(mesaj, 'plain', 'utf-8')
     msg['Subject'] = f'YENİ İZİN TALEBİ: {ad}'
     msg['From'] = GONDERICI_MAIL
     msg['To'] = ALICI_MAIL
+    
+    try:
+        # Kurumsal hesaplar için Port 587 ve TLS şifrelemesi kullanıyoruz
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls() 
+        server.login(GONDERICI_MAIL, UYGULAMA_SIFRESI)
+        server.send_message(msg)
+        server.quit()
+        return True
+    except Exception as e:
+        return False
     
     try:
         server = smtplib.SMTP_SSL('smtp.gmail.com', 465)

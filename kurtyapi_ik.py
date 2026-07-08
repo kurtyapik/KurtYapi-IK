@@ -9,7 +9,7 @@ import json
 
 # --- E-POSTA AYARLARI ---
 GONDERICI_MAIL = "meltempolat@kurtyapihafriyat.com.tr" 
-UYGULAMA_SIFRESI = "yrizbqyixotlrwkl"
+UYGULAMA_SIFRESI = "pdbkbykldtjnmhqu"
 ALICI_MAIL = "ik@kurtyapihafriyat.com.tr" 
 
 def mail_gonder(ad, izin_turu, baslangic, bitis):

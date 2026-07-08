@@ -1,6 +1,30 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime, date
+import smtplib
+from email.mime.text import MIMEText
+
+# --- E-POSTA AYARLARI (BURAYI KENDİNİZE GÖRE DOLDURACAKSINIZ) ---
+# Gönderici hesabın Gmail olması gerekir.
+GONDERICI_MAIL = "meltempolat@kurtyapihafriyat.com.tr" 
+UYGULAMA_SIFRESI = "yriz bqyi xotl rwkl"
+ALICI_MAIL = "ik@kurtyapihafriyat.com.tr" # Sizin kendi mailiniz
+
+def mail_gonder(ad, izin_turu, baslangic, bitis):
+    mesaj = f"Kurt Yapı Merkez'den Yeni İzin Talebi Var!\n\nPersonel: {ad}\nİzin Türü: {izin_turu}\nTarihler: {baslangic} - {bitis}\n\nLütfen sisteme girerek onaylayınız."
+    msg = MIMEText(mesaj)
+    msg['Subject'] = f'YENİ İZİN TALEBİ: {ad}'
+    msg['From'] = GONDERICI_MAIL
+    msg['To'] = ALICI_MAIL
+    
+    try:
+        server = smtplib.SMTP_SSL('smtp.gmail.com', 465)
+        server.login(GONDERICI_MAIL, UYGULAMA_SIFRESI)
+        server.sendmail(GONDERICI_MAIL, ALICI_MAIL, msg.as_string())
+        server.quit()
+        return True
+    except Exception as e:
+        return False
 
 # Sayfa Ayarları
 st.set_page_config(page_title="Kurt Yapı İK", page_icon="🏗️", layout="centered")
@@ -27,17 +51,23 @@ with tab1:
             if ad:
                 yeni_talep = {'Personel Adı': ad, 'İzin Türü': izin_turu, 'Başlangıç': baslangic, 'Bitiş': bitis, 'Durum': '⏳ Bekliyor'}
                 st.session_state.izin_talepleri = pd.concat([st.session_state.izin_talepleri, pd.DataFrame([yeni_talep])], ignore_index=True)
-                st.success(f"Talebini başarıyla alındı! Yöneticiye E-Posta bildirimi gönderildi.")
+                
+                # E-posta gönderme fonksiyonunu tetikliyoruz
+                mail_durumu = mail_gonder(ad, izin_turu, baslangic, bitis)
+                
+                if mail_durumu:
+                    st.success("Talebiniz başarıyla alındı! Yöneticiye E-Posta bildirimi gönderildi.")
+                else:
+                    st.warning("Talep sisteme kaydedildi ancak e-posta bildirim motoru ayarlanmadığı için yöneticiye mail atılamadı.")
             else:
                 st.error("Lütfen Ad Soyad giriniz.")
 
 with tab2:
     st.warning("Bu ekran sadece Onay Yetkilisi tarafından görülür.")
     
-    # --- GÜVENLİK KİLİDİ ---
     admin_sifre = st.text_input("Yönetici Şifresini Giriniz (PIN):", type="password")
     
-    if admin_sifre == "1923": # Sizin özel yönetici şifreniz
+    if admin_sifre == "1923":
         st.success("Yönetici Girişi Başarılı!")
         st.dataframe(st.session_state.izin_talepleri)
         

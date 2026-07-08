@@ -3,6 +3,9 @@ import pandas as pd
 from datetime import datetime, date
 import smtplib
 from email.mime.text import MIMEText
+import gspread
+from google.oauth2.service_account import Credentials
+import json
 
 # --- E-POSTA AYARLARI ---
 GONDERICI_MAIL = "meltempolat@kurtyapihafriyat.com.tr" 
@@ -28,15 +31,45 @@ def mail_gonder(ad, izin_turu, baslangic, bitis):
 # Sayfa Ayarları
 st.set_page_config(page_title="Kurt Yapı İK", page_icon="🏗️", layout="centered")
 
-# Veri Tabanı Simülasyonu
-if 'izin_talepleri' not in st.session_state:
-    st.session_state.izin_talepleri = pd.DataFrame(columns=['Personel Adı', 'İzin Türü', 'Başlangıç', 'Bitiş', 'Durum'])
+# --- GOOGLE SHEETS BAĞLANTISI ---
+@st.cache_resource
+def get_google_sheet():
+    scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+    # Secrets bölümüne yapıştırdığınız JSON kodunu okur
+    creds_dict = json.loads(st.secrets["GOOGLE_CREDENTIALS"])
+    creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+    client = gspread.authorize(creds)
+    return client.open("KurtYapi_IK_Merkez")
+
+# Veritabanına Bağlan
+try:
+    sh = get_google_sheet()
+    ws_talepler = sh.worksheet("Talepler")
+    ws_bakiyeler = sh.worksheet("Bakiyeler")
+    
+    # Excel bomboşsa ilk satıra başlıkları otomatik yazar
+    if len(ws_talepler.get_all_values()) == 0:
+        ws_talepler.append_row(["ID", "Tarih", "Personel Adı", "İzin Türü", "Başlangıç", "Bitiş", "Gün", "Durum"])
+    if len(ws_bakiyeler.get_all_values()) == 0:
+        ws_bakiyeler.append_row(["Personel Adı", "Toplam İzin Hakkı", "Kullanılan", "Kalan Bakiye"])
+except Exception as e:
+    st.error(f"Veri tabanına bağlanılamadı. Hata: {e}")
+    st.stop()
+
+# Excel'den Verileri Çek
+veri_talepler = ws_talepler.get_all_records()
+veri_bakiyeler = ws_bakiyeler.get_all_records()
+
+df_talepler = pd.DataFrame(veri_talepler)
+df_bakiyeler = pd.DataFrame(veri_bakiyeler)
 
 st.title("🏗️ KURT YAPI MERKEZ")
 st.subheader("Personel İzin Yönetim Sistemi")
 
-tab1, tab2 = st.tabs(["📲 Personel Talep Ekranı", "⚙️ Yönetici Onay Paneli"])
+# 3 Sekmeli Yapı
+tab1, tab2, tab3 = st.tabs(["📲 Talep Ekranı", "⚙️ Yönetici Onay", "📊 Bakiye Paneli"])
 
+# --- 1. SEKME: PERSONEL TALEBİ ---
 with tab1:
     st.info("Sahadaki personel bu ekranı kullanarak izin talebini iletir.")
     with st.form("izin_formu"):
@@ -48,43 +81,83 @@ with tab1:
         
         if gonder:
             if ad:
-                yeni_talep = {'Personel Adı': ad, 'İzin Türü': izin_turu, 'Başlangıç': baslangic, 'Bitiş': bitis, 'Durum': '⏳ Bekliyor'}
-                st.session_state.izin_talepleri = pd.concat([st.session_state.izin_talepleri, pd.DataFrame([yeni_talep])], ignore_index=True)
-                
-                # E-posta gönderme fonksiyonunu tetikliyoruz
-                mail_durumu = mail_gonder(ad, izin_turu, baslangic, bitis)
-                
-                if mail_durumu:
-                    st.success("Talebiniz başarıyla alındı! Yöneticiye E-Posta bildirimi gönderildi.")
+                gun_sayisi = (bitis - baslangic).days + 1
+                if gun_sayisi <= 0:
+                    st.error("Bitiş tarihi başlangıçtan önce olamaz!")
                 else:
-                    st.warning("Talep sisteme kaydedildi ancak e-posta bildirim motoru ayarlanmadığı için yöneticiye mail atılamadı.")
+                    # Talebi benzersiz bir ID ile kaydet
+                    islem_id = datetime.now().strftime("%Y%m%d%H%M%S")
+                    tarih_str = datetime.now().strftime("%d-%m-%Y")
+                    
+                    # Excel 'Talepler' sayfasına yaz
+                    ws_talepler.append_row([islem_id, tarih_str, ad, izin_turu, str(baslangic), str(bitis), gun_sayisi, "⏳ Bekliyor"])
+                    
+                    # Yöneticiye mail at
+                    mail_durumu = mail_gonder(ad, izin_turu, baslangic, bitis)
+                    if mail_durumu:
+                        st.success("Talebiniz başarıyla alındı ve yöneticiye E-Posta gönderildi.")
+                    else:
+                        st.warning("Talep Excel'e kaydedildi ancak e-posta bildirim motoru çalışmadı.")
             else:
                 st.error("Lütfen Ad Soyad giriniz.")
 
+# --- 2. SEKME: YÖNETİCİ ONAYI ---
 with tab2:
     st.warning("Bu ekran sadece Onay Yetkilisi tarafından görülür.")
-    
     admin_sifre = st.text_input("Yönetici Şifresini Giriniz (PIN):", type="password")
     
     if admin_sifre == "1923":
         st.success("Yönetici Girişi Başarılı!")
-        st.dataframe(st.session_state.izin_talepleri)
-        
-        if not st.session_state.izin_talepleri.empty:
-            bekleyenler = st.session_state.izin_talepleri[st.session_state.izin_talepleri['Durum'] == '⏳ Bekliyor']
+        if not df_talepler.empty:
+            bekleyenler = df_talepler[df_talepler['Durum'] == '⏳ Bekliyor']
+            st.dataframe(df_talepler)
+            
             if not bekleyenler.empty:
-                onaylanacak = st.selectbox("İşlem yapılacak personeli seçin:", bekleyenler['Personel Adı'].tolist())
+                st.divider()
+                onaylanacak_id = st.selectbox("İşlem yapılacak talebi (ID) seçin:", bekleyenler['ID'].tolist())
+                secilen_talep = bekleyenler[bekleyenler['ID'] == onaylanacak_id].iloc[0]
+                st.write(f"**İşlem Yapılan Personel:** {secilen_talep['Personel Adı']} | **Talep Edilen Gün:** {secilen_talep['Gün']}")
                 
                 col1, col2 = st.columns(2)
                 with col1:
                     if st.button("✅ Onayla"):
-                        st.session_state.izin_talepleri.loc[st.session_state.izin_talepleri['Personel Adı'] == onaylanacak, 'Durum'] = '✅ Onaylandı'
-                        st.rerun()
+                        # Talepler sayfasında durumu güncelle
+                        hucre = ws_talepler.find(str(onaylanacak_id))
+                        ws_talepler.update_cell(hucre.row, 8, "✅ Onaylandı") # 8. Sütun "Durum" sütunudur.
+                        
+                        # Bakiye düşümü yap
+                        personel = secilen_talep['Personel Adı']
+                        gun = int(secilen_talep['Gün'])
+                        try:
+                            # Excel'de personeli bul ve bakiyesini güncelle
+                            b_hucre = ws_bakiyeler.find(personel)
+                            kullanilan = int(ws_bakiyeler.cell(b_hucre.row, 3).value or 0)
+                            yeni_kullanilan = kullanilan + gun
+                            toplam = int(ws_bakiyeler.cell(b_hucre.row, 2).value or 0)
+                            
+                            ws_bakiyeler.update_cell(b_hucre.row, 3, yeni_kullanilan)
+                            ws_bakiyeler.update_cell(b_hucre.row, 4, toplam - yeni_kullanilan)
+                        except:
+                            # Eğer personel listeye ilk defa giriyorsa, varsayılan 14 gün hak ile ekler
+                            ws_bakiyeler.append_row([personel, 14, gun, 14-gun])
+                            
+                        st.success("Talep Onaylandı ve Bakiye Düşüldü! Sayfa yenileniyor...")
                 with col2:
                     if st.button("❌ Reddet"):
-                        st.session_state.izin_talepleri.loc[st.session_state.izin_talepleri['Personel Adı'] == onaylanacak, 'Durum'] = '❌ Reddedildi'
-                        st.rerun()
+                        hucre = ws_talepler.find(str(onaylanacak_id))
+                        ws_talepler.update_cell(hucre.row, 8, "❌ Reddedildi")
+                        st.error("Talep Reddedildi! Sayfa yenileniyor...")
             else:
                 st.info("Bekleyen yeni onay talebi bulunmuyor.")
-    elif admin_sifre != "":
-        st.error("Hatalı Şifre! Lütfen tekrar deneyin.")
+        else:
+            st.info("Sistemde henüz talep kaydı yok.")
+
+# --- 3. SEKME: İZİN BAKİYELERİ ---
+with tab3:
+    st.header("📊 Personel İzin Bakiyeleri")
+    st.info("Personellerin hak ettiği toplam izin günlerini arka planda Google Drive'daki 'KurtYapi_IK_Merkez' Excel'inizden değiştirebilirsiniz. Sistem anlık olarak okur.")
+    
+    if not df_bakiyeler.empty:
+        st.dataframe(df_bakiyeler, use_container_width=True)
+    else:
+        st.warning("Henüz sisteme kaydedilmiş bakiye verisi bulunmuyor.")

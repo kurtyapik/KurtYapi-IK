@@ -7,7 +7,7 @@ from email.mime.text import MIMEText
 # --- E-POSTA AYARLARI (BURAYI KENDİNİZE GÖRE DOLDURACAKSINIZ) ---
 # Gönderici hesabın Gmail olması gerekir.
 GONDERICI_MAIL = "meltempolat@kurtyapihafriyat.com.tr" 
-UYGULAMA_SIFRESI = "yriz bqyi xotl rwkl"
+UYGULAMA_SIFRESI = "yrizbqyixotlrwkl"
 ALICI_MAIL = "ik@kurtyapihafriyat.com.tr" # Sizin kendi mailiniz
 
 def mail_gonder(ad, izin_turu, baslangic, bitis):
